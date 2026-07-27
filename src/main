@@ -1,0 +1,76 @@
+#include "order_book.hpp"
+
+#include <chrono>
+#include <iostream>
+#include <random>
+
+namespace {
+
+void print_trades(const std::vector<Trade>& trades) {
+    for (const auto& t : trades) {
+        std::cout << "  TRADE  buy#" << t.buy_id << " sell#" << t.sell_id
+                  << "  " << t.quantity << " @ " << t.price << "\n";
+    }
+}
+
+void scripted_demo() {
+    OrderBook book;
+    OrderId next = 1;
+
+    std::cout << "=== Scripted demo ===\n\n";
+
+    book.add({next++, Side::Sell, OrderType::Limit, 101, 50});
+    book.add({next++, Side::Sell, OrderType::Limit, 102, 30});
+    book.add({next++, Side::Sell, OrderType::Limit, 101, 20});
+    book.add({next++, Side::Buy, OrderType::Limit, 99, 40});
+    book.add({next++, Side::Buy, OrderType::Limit, 98, 60});
+
+    std::cout << "Resting book:\n";
+    book.print();
+
+    std::cout << "Incoming buy 60 @ 101 (crosses two ask levels):\n";
+    auto trades = book.add({next++, Side::Buy, OrderType::Limit, 101, 60});
+    print_trades(trades);
+    std::cout << "\nBook after match:\n";
+    book.print();
+
+    std::cout << "Market sell 30 (hits best bid):\n";
+    trades = book.add({next++, Side::Sell, OrderType::Market, 0, 30});
+    print_trades(trades);
+    std::cout << "\nBook after market order:\n";
+    book.print();
+
+    std::cout << "Cancel order #5 (bid 60 @ 98): "
+              << (book.cancel(5) ? "ok" : "not found") << "\n\n";
+    book.print();
+}
+
+void benchmark(std::size_t count) {
+    OrderBook book;
+    std::mt19937_64 rng(42);
+    std::uniform_int_distribution<Price> price(95, 105);
+    std::uniform_int_distribution<Quantity> qty(1, 100);
+    std::bernoulli_distribution buy(0.5);
+
+    auto start = std::chrono::steady_clock::now();
+    for (std::size_t i = 1; i <= count; ++i) {
+        Side side = buy(rng) ? Side::Buy : Side::Sell;
+        book.add({i, side, OrderType::Limit, price(rng), qty(rng)});
+    }
+    auto end = std::chrono::steady_clock::now();
+
+    double seconds = std::chrono::duration<double>(end - start).count();
+    std::cout << "=== Benchmark ===\n";
+    std::cout << count << " orders in " << seconds << " s  ("
+              << static_cast<std::uint64_t>(count / seconds)
+              << " orders/sec)\n";
+    std::cout << "Resting orders: " << book.size() << "\n";
+}
+
+}
+
+int main() {
+    scripted_demo();
+    benchmark(1000000);
+    return 0;
+}
